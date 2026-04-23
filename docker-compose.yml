@@ -1,0 +1,23 @@
+services:
+  elko-fatcat:
+    image: jsoprych/elko-fatcat-mcp:latest
+    container_name: elko-fatcat
+    ports:
+      - "8083:8083"
+    volumes:
+      - elko-fatcat-data:/data
+    environment:
+      - ELKO_EASY_KEY=${ELKO_EASY_KEY:-}
+      - ELKO_KEY_SECRET=${ELKO_KEY_SECRET:-}
+      - ELKO_REVOCATION_URL=${ELKO_REVOCATION_URL:-}
+      - CONGRESS_API_KEY=${CONGRESS_API_KEY:-}
+      - FEC_API_KEY=${FEC_API_KEY:-}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8083/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  elko-fatcat-data:
