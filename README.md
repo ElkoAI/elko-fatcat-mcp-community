@@ -68,12 +68,17 @@ Add `.mcp.json` to your MCP client config. The `/mcp` endpoint requires no API k
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `ELKO_EASY_KEY` | No | Pre-baked in image. Override to customize rate limits. |
-| `ELKO_KEY_SECRET` | No | HMAC secret for pro-key validation |
+| `ELKO_KEY_SECRET` | No | HMAC secret for pro-key validation (higher limits) |
 | `ELKO_REVOCATION_URL` | No | Pro-key revocation endpoint |
-| `CONGRESS_API_KEY` | No | Congress.gov API key (free) — enables legislation ingest |
-| `FEC_API_KEY` | No | FEC API key (optional) — defaults to DEMO_KEY with rate limits |
+| `CONGRESS_API_KEY` | No | Congress.gov API key (free) — required for legislation ingest |
+| `FEC_API_KEY` | No | FEC API key (optional) — defaults to DEMO_KEY with lower rate limits |
 
-Get a free Congress.gov API key at [api.congress.gov](https://api.congress.gov/sign-up/).
+The built-in easy key has RPM and RPD limits baked into the image. For higher throughput
+supply `ELKO_KEY_SECRET` (pro key) or override `ELKO_EASY_KEY` with a custom token.
+
+Get free API keys:
+- Congress.gov: [api.congress.gov/sign-up](https://api.congress.gov/sign-up/)
+- FEC: [api.data.gov/signup](https://api.data.gov/signup/)
 
 ---
 
@@ -89,8 +94,9 @@ Get a free Congress.gov API key at [api.congress.gov](https://api.congress.gov/s
 | Campaign Donors (FEC) | Per FEC filing | Top employer donors per member |
 | Sponsored Legislation | ~1 day | Recent bills per member (API key required) |
 
-Background ingest runs automatically. First start loads full history (several minutes).
-Subsequent starts are incremental.
+Background ingest runs automatically. First start backfills full history — expect
+5–15 minutes for 13F (4 quarters, ~80 MB ZIP) + Form 4 (1 year) + congressional data,
+depending on network. Subsequent starts are incremental (seconds to minutes).
 
 ---
 
@@ -121,6 +127,31 @@ Create a `.env` file in the same directory to set your keys without editing comp
 CONGRESS_API_KEY=your_key_here
 FEC_API_KEY=your_key_here
 ```
+
+---
+
+## Tool Parameters
+
+Each tool's full input schema is available from the running server:
+
+```bash
+curl -s http://localhost:8083/v1/catalogue | jq '.tools[] | {name, inputSchema}'
+```
+
+Common parameters across tools:
+
+| Tool | Key Parameters |
+|------|---------------|
+| `fatcat_13f_holdings` | `fund_name` or `cik`, optional `quarter` (YYYY-QN), `limit` |
+| `fatcat_13f_changes` | `fund_name` or `cik`, optional `quarter` (YYYY-QN), `action` (new/added/trimmed/exited) |
+| `fatcat_13f_ticker` | `ticker`, optional `quarter`, `min_value_m` (millions), `limit` |
+| `fatcat_13f_top_moves` | optional `action`, `quarter`, `limit` |
+| `fatcat_insider_trades` | `ticker` or `name`, optional `code` (P/S/A/D), `months`, `limit` |
+| `fatcat_congress_trades` | optional `member`, `ticker`, `party` (D/R/I), `type` (purchase/sale), `months`, `limit` |
+| `fatcat_member_profile` | `member` (name or bioguide ID) |
+| `fatcat_member_legislation` | `member`, optional `limit` |
+| `fatcat_member_donors` | `member`, optional `cycle` (e.g. 2024), `limit` |
+| `fatcat_ingest_status` | no parameters |
 
 ---
 
@@ -184,6 +215,40 @@ make logs      # Follow logs
 make rebuild   # Force rebuild + restart
 make status    # Container status
 ```
+
+---
+
+## Version Pinning
+
+To pin to a specific release instead of always pulling `:latest`:
+
+```yaml
+image: jsoprych/elko-fatcat-mcp:0.1.0
+```
+
+Run `make rebuild` to pull the latest image and restart.
+
+---
+
+## Troubleshooting
+
+**Container exits immediately**
+- Check logs: `make logs`
+- Ensure the data volume is writable: `docker volume inspect elko-fatcat-data`
+
+**No data after startup**
+- Ingest takes 5–15 min on first run. Check `make logs` for progress.
+- Call `fatcat_ingest_status` to see record counts and last ingest timestamps.
+
+**Legislation data missing**
+- `CONGRESS_API_KEY` is required. Get one free at [api.congress.gov/sign-up](https://api.congress.gov/sign-up/).
+
+**401 on REST API calls**
+- Pass your easy key in the `X-API-Key` header. Retrieve it from `/v1/key-status`.
+
+**Rate limited**
+- The built-in easy key has RPM/RPD limits. Supply `ELKO_KEY_SECRET` for a pro key,
+  or override `ELKO_EASY_KEY` with a custom token.
 
 ---
 
